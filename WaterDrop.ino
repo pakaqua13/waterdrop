@@ -29,7 +29,7 @@ TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
 //WaterDrop Data
 #include "wd_types.h"
 
-#define SKETCH_VERSION "1.0.13"
+#define SKETCH_VERSION "1.0.16"
 #define TRIGGER_PIN 38
 
 const char* serverIndex = "<form method='POST' action='/upload' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
@@ -203,19 +203,6 @@ void setupWebMain() {
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/style.css", "text/css");
   });
-  //Bootstrap
-  server.on("/bootstrap.min.js", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/bootstrap.min.js", "text/js");
-  });
-  server.on("/bootstrap.min.css", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/bootstrap.min.css", "text/css");
-  });
-  server.on("/jquery.min.js", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/jquery.min.js", "text/js");
-  });
-  server.on("/popper.min.js", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/jquery.min.js", "text/js");
-  });
 
   
   server.on("/go", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -329,4 +316,3 @@ void loop() {
   delay(1);
   
 }
-

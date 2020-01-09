@@ -1,10 +1,10 @@
-/* h1{ */
+h1{
   font-family: Helvetica;
   color: #0F3376;
 }
 
 .WD_TYPE0 {
-  border:1px solid black;
+  border:1px solid black !important;
   border-radius:10px;
 }
 
