@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #endif
 
+
 //needed for library
 #include <ESPAsyncWebServer.h>
 #include <ESPAsyncWiFiManager.h>         //https://github.com/tzapu/WiFiManager
@@ -29,7 +30,7 @@ TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
 //WaterDrop Data
 #include "wd_types.h"
 
-#define SKETCH_VERSION "1.0.16"
+#define SKETCH_VERSION "0.1.36"
 #define TRIGGER_PIN 38
 
 const char* serverIndex = "<form method='POST' action='/upload' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
@@ -172,19 +173,40 @@ String processor(const String& var){
       
       //RetVal += "<tr><td>Broche :</td><td><input type=\"number\" name=\"pin"+ wd_device[i].name + "\" value=\"" + String(wd_device[i].pin) + "\"></td></tr>";
       for (int j = 0 ; j < NB_DROP ; ++j) {
+
+        //Trigger
+        RetVal += "<div class=\"drop\">";
+        RetVal += "<div class=\"input-group mb-1\">";
+        RetVal += "<div class=\"input-group-prepend\">";
+        RetVal += "<span class=\"input-group-text\">";
+        RetVal += "Ext Trig ";
+        RetVal += "</span></div>";
+  
+        RetVal += "<select  class=\"custom-select\" name=\"trig" + String(j) + wd_device[i].name + "\" id=\"trig" + String(j) + wd_device[i].name + "\">";
+        RetVal += "<option value=\""+ String(NB_TRIGGER) +"\"";
+        RetVal += wd_trig[i*NB_DROP+j]==NB_TRIGGER?"selected":"";
+        RetVal += ">-- NO TRIG --</option>";
+
+          for (int k = 0 ; k < NB_TRIGGER ; ++k){
+            RetVal += "<option value=\"" + String(k) + "\"";
+            RetVal += wd_trig[i*NB_DROP+j]==k?"selected":"";
+            RetVal += ">"+ wd_trigger[k].name + "</option>";
+          }
+        RetVal += "</select></div>";
+        
         // Délai
         RetVal += "<div class=\"input-group mb-1\"><div class=\"input-group-prepend\"><span class=\"input-group-text\">";
-        RetVal += "Délai" + String(j+1);
+        RetVal += "Délai " + String(j+1);
         RetVal += "</span></div>";      
         RetVal += "<input class=\"form-control\" type=\"number\" name=\"delai" + String(j) + wd_device[i].name + "\" value=\"" + String(wd_delai[i*NB_DROP+j]) + "\">";
         RetVal += "</div>";
       
         // Durée
-        RetVal += "<div class=\"input-group mb-1\"><div class=\"input-group-prepend\"><span class=\"input-group-text\">";
-        RetVal += "Durée" + String(j+1);
+        RetVal += "<div class=\"input-group \"><div class=\"input-group-prepend\"><span class=\"input-group-text\">";
+        RetVal += "Durée " + String(j+1);
         RetVal += "</span></div>";      
         RetVal += "<input class=\"form-control\" type=\"number\" name=\"duree" + String(j) + wd_device[i].name + "\" value=\"" + String(wd_duree[i*NB_DROP+j]) + "\">";
-        RetVal += "</div>";
+        RetVal += "</div></div>";
       }
       
       RetVal += "</div></div>";
@@ -216,6 +238,11 @@ void setupWebMain() {
     Serial.print("Nb Parameters: ");
     Serial.println(paramsNr);
     
+    for(int k=0;k<NB_TRIGGER+1;k++){
+      wd_trig_MaxTime[k] = 0L;
+      wd_trigger[k].en = false;
+     }
+    
     for(int i=0;i<NB_DEV;i++){
       wd_device[i].pin = atoi(request->getParam("pin"+ wd_device[i].name,true )->value().c_str());
       for (int j = 0 ; j < NB_DROP ; ++j )
@@ -224,30 +251,29 @@ void setupWebMain() {
         wd_delai[i*NB_DROP+j] = atol(request->getParam("delai"+ String(j)+ wd_device[i].name,true )->value().c_str());
         //duree
         wd_duree[i*NB_DROP+j] = atol(request->getParam("duree"+ String(j)+ wd_device[i].name,true )->value().c_str());
-        
-        if (ulMaxTime < (wd_duree[i*NB_DROP+j]+wd_delai[i*NB_DROP+j]))
+        //Trigger
+        wd_trig[i*NB_DROP+j] = atol(request->getParam("trig"+ String(j)+ wd_device[i].name,true )->value().c_str());
+
+        // Max Time
+        if (wd_trig_MaxTime[wd_trig[i*NB_DROP+j]] < (wd_duree[i*NB_DROP+j]+wd_delai[i*NB_DROP+j]))
         {
-          ulMaxTime = (wd_duree[i*NB_DROP+j]+wd_delai[i*NB_DROP+j]);
+          wd_trig_MaxTime[wd_trig[i*NB_DROP+j]] = (wd_duree[i*NB_DROP+j]+wd_delai[i*NB_DROP+j])+100;
         }
       } 
     }
+    process_drop();
+    
     request->send(SPIFFS, "/index.html", String(), false, processor);
-    process_drop(ulMaxTime);
   });
   
 }
 
-void setupWebServer() {
-  setupWebOTA();
-  setupWebMain();
-  server.onNotFound(notFound);
-  server.begin();
-}
 
- void process_drop(unsigned long ulMaxTime ) {
+ void process_drop( void ) {
     unsigned long gulStartTime = 0L;
     unsigned long gultemp = 0L;
     unsigned long gulCurrent = 0L;
+    bool bEndLoop = false;
     
     for (int i = 0 ; i < NB_DEV ; ++i) {
       if (wd_device[i].type == WD_OUT)
@@ -262,15 +288,31 @@ void setupWebServer() {
     }
     
     Serial.println("Start Drop");
-    ulMaxTime = ulMaxTime + 100;
-    gulStartTime = millis();
-    gulCurrent = 0;
-    while( (gulCurrent) < (ulMaxTime)) {
-      gulCurrent = millis()-gulStartTime;
+    for ( int k = 0 ; k < NB_TRIGGER+1 ; ++k){
+      wd_trig_Current[k] = 0L;
+      Serial.print("MaxTime");
+      Serial.println(wd_trig_MaxTime[k]);              
+    }
+      
+    wd_trig_Start[NB_TRIGGER] = millis();
+    while( bEndLoop == false ) {
+      gulCurrent = millis();
+      for ( int k = 0 ; k < NB_TRIGGER ; ++k){
+        if (wd_trigger[k].en == 1)
+        {
+          wd_trig_Current[k] = gulCurrent-wd_trig_Start[k];
+        }
+      }
+      wd_trig_Current[NB_TRIGGER] = gulCurrent-wd_trig_Start[NB_TRIGGER];
+      
       for (int i = 0 ;  i < NB_DEV ; ++i) {
         for (int j = 0 ; j < NB_DROP ; ++j) {
+          
           if (wd_duree[i*NB_DROP+j] > 0){
-            gultemp = wd_delai[i*NB_DROP+j];    
+            // Get Current fn Trig
+            gultemp = wd_delai[i*NB_DROP+j];  
+            gulCurrent = wd_trig_Current[wd_trig[i*NB_DROP+j]];
+                        
             if ( gulCurrent >= gultemp ) {
               if (gulCurrent < (gultemp+wd_duree[i*NB_DROP+j])) {
                 if (wd_device[i].en == 0) {
@@ -290,29 +332,69 @@ void setupWebServer() {
                 digitalWrite(wd_device[i].pin, LOW);
               }
             }
+            
           }
         }
       }
+
+      bEndLoop = true;
+      if (wd_trig_Current[NB_TRIGGER] < 4000L) { // < 4s
+        for ( int k = 0 ; k < NB_TRIGGER+1 ; ++k){
+          if (wd_trig_Current[k] < wd_trig_MaxTime[k]){
+            bEndLoop = false;
+          }
+        }
+      }
+      else {
+        Serial.println("TimeOut");
+      }
+      delay(1);
     }    
     Serial.println("End Drop");
  }
  
+void setupWebServer() {
+  setupWebOTA();
+  setupWebMain();
+  server.onNotFound(notFound);
+  server.begin();
+}
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   pinMode(TRIGGER_PIN,INPUT);
+  for ( int k = 0 ; k < NB_TRIGGER ; ++k){
+    pinMode(wd_trigger[k].pin,INPUT);
+  }
+
+  for ( int k = 0 ; k < NB_DROP*NB_DEV ; ++k){
+    wd_trig[k] = NB_TRIGGER;
+  }
+      
   setupSPIFFS();
   setupTFT();
   setupWifiManager();
   setupWebServer();
 }
 
+  unsigned long gstart;
 void loop() {
   // is configuration portal requested?
   if ( digitalRead(TRIGGER_PIN) == LOW ) {
     clearWifiCredentials();
   }
+  gstart = millis();
   
+  for ( int k = 0 ; k < NB_TRIGGER ; ++k){
+    if ( (digitalRead(wd_trigger[k].pin) == LOW ) && (wd_trigger[k].en == false ) ){
+      wd_trig_Start[k] = gstart;
+      wd_trigger[k].en = true;
+      Serial.println(wd_trigger[k].name);
+    }
+  }
+      
   delay(1);
   
 }
+

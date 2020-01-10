@@ -4,8 +4,8 @@ h1{
 }
 
 .WD_TYPE0 {
-  border:1px solid black !important;
-  border-radius:10px;
+    border: 5px ridge #CED4DA;
+    border-radius: 10px;
 }
 
 td:first-child {
@@ -16,11 +16,20 @@ table{
   margin:auto;
 }
 
-input{
+input, select, option{
   margin:auto;
   text-align:center;
+  text-align-last: center;
 }
 
 span {
     width: 80px;
+    min-width: 80px;
+    max-width: 80px;
+}
+
+.drop {
+    margin-top: 20px;
+    border:1px solid #CED4DA;
+    border-radius: .25rem;
 }
